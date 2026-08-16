@@ -1,21 +1,37 @@
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
+using SensorApp.Data;
+using SensorApp.Services;
 
-namespace SensorApp
+var builder = WebApplication.CreateBuilder(args);
+
+var connectionString = builder.Configuration.GetConnectionString("SensorDb")
+    ?? throw new InvalidOperationException("Connection string 'SensorDb' is not configured.");
+
+builder.Services.AddDbContext<SensorDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
+builder.Services.AddScoped<IReadingService, ReadingService>();
+builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
 {
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
-            Mgr.SM.Init();
-            CreateHostBuilder(args).Build().Run();
-        }
+    options.SwaggerDoc("v1", new() { Title = "SensorApp API", Version = "v1" });
+});
 
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureWebHostDefaults(webBuilder =>
-                {
-                    webBuilder.UseStartup<Startup>();
-                });
-    }
+var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<SensorDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbInitializer");
+    await DbInitializer.InitializeAsync(context, logger);
 }
+
+app.UseSwagger();
+app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "SensorApp API v1"));
+app.MapControllers();
+
+app.Run();
